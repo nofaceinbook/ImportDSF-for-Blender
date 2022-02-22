@@ -1,6 +1,23 @@
 
 from xplnedsf2 import *
 import bpy
+import os
+
+
+def set_separator(filepath, to='/', double_backslash=False):
+    """
+    This library uses '/' as separator for directories in filenames.
+    This functions sets this default separator or it sets it with to='os' to the one used by os.
+    The updated filename is returned.
+    """
+    if to != 'os':  # so we are setting from os-separator to the one defined in to value
+        return filepath.replace(os.sep, to)
+    # if to = 'os' we set the separator of the os
+    if os.sep == '\\' and double_backslash:
+        return filepath.replace('/', '\\\\')  # double_backslash might be required if strings are exported further
+    else:  # who knows what else could exist ;-)
+        return filepath.replace('/', os.sep)
+
 
 class DSF_loader:
     def __init__(self, wb, eb, sb, nb, scl, lp_overlay):
@@ -15,62 +32,60 @@ class DSF_loader:
 
         # Path to X-Plane.exe (use '/' delimiter), if not set here it is retrieved from dsf file loaded (under X-Plane)
         self.xp_path = ""
+        self.dsf_file = ""  # this value is set when DSF_loader is executed
 
-    def read_ter_file(self, terpath, dsfpath):
+    def read_ter_file(self, ter_path):
         """
-        Reads X-Plane terrain file (.ter) in terpath and returns values as dictionary.
+        Reads X-Plane terrain file (.ter) in ter_path and returns values as dictionary.
         In case of errors the dict contains key ERROR with value containing description of error.
         To read default terrains the path for X-Plane (self.xp_path) is needed.
-        dsfpath is the path of the dsf file that contains the terrain definition. Needed to read dsf specific terrain.
+        In order to read non default terrain the path of the dsf file (self.dsf_path) is needed.
+        All filenames are using '/' as delimiter as in X-Plane definitions.
         """
         ter = dict()
+        ter_file_id = ['A', '800', 'TERRAIN']  # each XP terrain file has these values in the first 3 lines
 
-        if terpath == 'terrain_Water':  # No terrain file for Water
+        if ter_path == 'terrain_Water':  # No terrain file for Water
             return ter
-        
-        if terpath.endswith('_OVL'):  #### TBD: Can probably be removed as function is called with terrain name now
-            overlay = True
-            terpath = terpath[:-4]  # remove _OVL now from terrain name
 
-        ### TBD: handle different path delimeters in given pathes like \ by replacing them ? ####
-        if terpath.startswith("lib/g10"):  # global XP 10 terrain definition
-            #### TBD: Build path correct for every file system ###
-            filename = self.xp_path + "/Resources/default scenery/1000 world terrain" + terpath[7:]  # remove lib/g10
-        elif terpath.startswith("terrain/"):  # local dsf terrain definition
-            filename = dsfpath[:dsfpath.rfind("Earth nav data")] + terpath  # remove part for dsf location
-            ### TBD: Error check that terrain file exists
+        if ter_path.startswith("lib/g10"):  # global XP 10 terrain definition
+            filename = self.xp_path + "/Resources/default scenery/1000 world terrain" + ter_path[7:]  # remove lib/g10
+        elif ter_path.startswith("terrain/"):  # local dsf terrain definition
+            filename = self.dsf_file[:self.dsf_file.rfind("Earth nav data")] + ter_path  # remove part for dsf location
         else:
-            ter["ERROR"] = "Unknown Terrain definition: " + terpath
+            ter["ERROR"] = "Unknown Terrain definition: " + ter_path
             return ter
-            ##### TBD: Build filename for local .ter files starting with ../ using dsfpath #######
 
         try:
-            with open(filename, encoding="utf8") as f:
-                for line in f:  ### TBD: Check that first three lines contain A  800  TERRAIN   #####
+            with open(set_separator(filename, to='os'), encoding="utf8") as f:
+                for i, line in enumerate(f):
+                    if i < 3:  # checking that the first three lines of the file include the ter_file_id
+                        if line.strip() != ter_file_id[i]:
+                            ter["ERROR"] = "Missing terrain file identifier " + ter_file_id[i] + " in line " + i + \
+                                           "in terrain file: " + ter_path
+                            return ter
                     values = line.split()
-                    #print(values)
                     if len(values) > 0:  # skip empty line
                         key = values.pop(0)
                         if len(values) > 0 and values[0].startswith("../"):  # replace relative path with full path
                             filepath = filename[:filename.rfind("/")]  # get just path without name of file in path
                             values[0] = filepath[:filepath.rfind("/") + 1] + values[0][3:]
-                            #print("###", filename, values[0])
-                            ### TBD: Handle ERROR when '/' is not found; when other delimiters are used
-                        ter[key] = values
-                    ### TBD: in case of multiple keys in files append new values to existing key
+                        if key in ter:  # in case the key is used multiple times in ter file, just append add. values
+                            ter[key] = ter[key].append(values)
+                        else:
+                            ter[key] = values
         except IOError:
             ter["ERROR"] = "Error reading terrain file: " + filename
 
         return ter
 
-
     def add_material(self, matName, ter, bpy):
         m = bpy.data.materials.new(matName)
         if matName.find('terrain_Water') < 0:  # this is no water 
             if "BASE_TEX" in ter:
-                teximagefile =  ter["BASE_TEX"][0].replace("/", "\\\\")  
+                teximagefile = ter["BASE_TEX"][0].replace("/", "\\\\")
             elif "BASE_TEX_NOWRAP" in ter:
-                teximagefile =  ter["BASE_TEX_NOWRAP"][0].replace("/", "\\\\") 
+                teximagefile = ter["BASE_TEX_NOWRAP"][0].replace("/", "\\\\")
             #print("Loading texture image: {}".format(teximagefile))
             m.use_nodes = True
             bsdf = m.node_tree.nodes["Principled BSDF"]
@@ -108,15 +123,15 @@ class DSF_loader:
             ### TBD: Change specular, roughness, transmission to good values for water
         return m
                 
-    def execute(self, dsf_file):
-        dsf_file = dsf_file.replace("\\", "/")  # making sure that only '/' is used for delimiter in file path
-        print("Reading DSF file: {}".format(dsf_file))
+    def execute(self, dsf_filename):
+        self.dsf_file = set_separator(dsf_filename)  # making sure that only '/' is used for delimiter in file path
+        print("Reading DSF file: {}".format(self.dsf_file))
         if not len(self.xp_path):  # if path to X-Plane.exe is not defined, retrieve it from dsf file
-            self.xp_path = dsf_file[:dsf_file.rfind("X-Plane 11") + 10]
+            self.xp_path = self.dsf_file[:self.dsf_file.rfind("X-Plane 11") + 10]
         print("XP Path: {}".format(self.xp_path))
 
         dsf = XPLNEDSF()
-        dsf.read(dsf_file)
+        dsf.read(dsf_filename)  # read the filename in delivered with os-specific separator
 
         print("------------ Starting to transform DSF ------------------")
         grid_west = int(dsf.Properties["sim/west"])
@@ -127,15 +142,16 @@ class DSF_loader:
             self.AREA_E += grid_west
             self.AREA_S += grid_south
             self.AREA_N += grid_south
-        print("But extracting just from west {} to east {} and south {} to north {}".format(self.AREA_W, self.AREA_E, self.AREA_S, self.AREA_N))
+        print("But extracting just from west {} to east {} and south {} to north {}".format(self.AREA_W, self.AREA_E,
+                                                                                            self.AREA_S, self.AREA_N))
 
         # Load all terrain files that dsf file into a dictionary
         terrain_details = dict()  # containing per terrain index the details of .ter-file in dict
-        for id in dsf.DefTerrains:
-            print("Loading Terrain {}".format(dsf.DefTerrains[id]))
-            terrain_details[id] = self.read_ter_file(dsf.DefTerrains[id], dsf_file)
-            if "ERROR" in terrain_details[id]:
-                print(terrain_details[id]["ERROR"])
+        for ter_id in dsf.DefTerrains:
+            print("Loading Terrain {}".format(dsf.DefTerrains[ter_id]))
+            terrain_details[ter_id] = self.read_ter_file(dsf.DefTerrains[ter_id])
+            if "ERROR" in terrain_details[ter_id]:
+                print(terrain_details[ter_id]["ERROR"])
         print("Loaded {} terrain details".format(len(terrain_details)))
 
         # SORT mesh patches so that pyhiscal mesh is bottom layer and all overlys are above
