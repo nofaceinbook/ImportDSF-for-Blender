@@ -79,48 +79,54 @@ class DSF_loader:
 
         return ter
 
-    def add_material(self, matName, ter, bpy):
-        m = bpy.data.materials.new(matName)
-        if matName.find('terrain_Water') < 0:  # this is no water 
+    def add_material(self, mat_name, ter, bpy):
+        """
+        Function adds new blender material (bpy needed) based on the X-Plane read terrain file information (ter).
+        The material name (mat_name) is the terrain name in X-Plane with '_O' attached in case of Overlay terrain.
+        The created material (m) in Blender is returned.
+        """
+        m = bpy.data.materials.new(mat_name)
+        if mat_name.find('terrain_Water') < 0:  # this is no water
             if "BASE_TEX" in ter:
-                teximagefile = ter["BASE_TEX"][0].replace("/", "\\\\")
+                tex_image_file = set_separator(ter["BASE_TEX"][0], to='os', double_backslash=True)
             elif "BASE_TEX_NOWRAP" in ter:
-                teximagefile = ter["BASE_TEX_NOWRAP"][0].replace("/", "\\\\")
-            #print("Loading texture image: {}".format(teximagefile))
+                tex_image_file = set_separator(ter["BASE_TEX_NOWRAP"][0], to='os', double_backslash=True)
+            else:
+                tex_image_file = "ERROR_No_BASE_TEX_definition_found_in_terrain_file"
             m.use_nodes = True
             bsdf = m.node_tree.nodes["Principled BSDF"]
-            texImage = m.node_tree.nodes.new('ShaderNodeTexImage')
-            texImage.location = (-400,280)
-            texImage.image = bpy.data.images.load(teximagefile, check_existing=True)
-            m.node_tree.links.new(bsdf.inputs['Base Color'], texImage.outputs['Color'])
+            tex_image = m.node_tree.nodes.new('ShaderNodeTexImage')
+            tex_image.location = (-400, 280)
+            tex_image.image = bpy.data.images.load(tex_image_file, check_existing=True)
+            m.node_tree.links.new(bsdf.inputs['Base Color'], tex_image.outputs['Color'])
             bsdf.inputs[7].default_value = 0.01  # This is setting the specular intensity
-            ### TBD: increase rougness
-            if matName.endswith( "_O"):  # add border texture for overlay
+            ### TBD: increase roughness ###
+            if mat_name.endswith("_O"):  # add border texture for overlay
                 if "BORDER_TEX" in ter:
-                    borderimagefile = ter["BORDER_TEX"][0].replace("/", "\\\\")
-                    borderImage = m.node_tree.nodes.new('ShaderNodeTexImage')
-                    borderImage.location = (-400,0)
-                    borderImage.image = bpy.data.images.load(borderimagefile, check_existing=True)
-                    borderImage.image.colorspace_settings.name = 'Non-Color'
-                    m.node_tree.links.new(bsdf.inputs['Alpha'], borderImage.outputs['Color'])                 
+                    border_image_file = set_separator(ter["BORDER_TEX"][0], to='os', double_backslash=True)
+                    border_image = m.node_tree.nodes.new('ShaderNodeTexImage')
+                    border_image.location = (-400, 0)
+                    border_image.image = bpy.data.images.load(border_image_file, check_existing=True)
+                    border_image.image.colorspace_settings.name = 'Non-Color'
+                    m.node_tree.links.new(bsdf.inputs['Alpha'], border_image.outputs['Color'])
                     m.blend_method = 'CLIP'
                     node = m.node_tree.nodes.new('ShaderNodeUVMap')
-                    node.location = (-700,0)
+                    node.location = (-700, 0)
                     node.uv_map = "borderUV"
-                    m.node_tree.links.new(node.outputs[0], borderImage.inputs[0])  # add link from new uv map to image texture
+                    # add link from new uv map to image texture:
+                    m.node_tree.links.new(node.outputs[0], border_image.inputs[0])
                 else:
                     print("WARNING: No texture file found for this terrain overlay/material!\n")
                 
-        else:  ### TBD: don't double everything below
-            teximagefile = self.xp_path + "/Resources/bitmaps/world/water/any.png"
-            teximagefile.replace("/", "\\\\")
-            #print("Loading texture image: {}".format(teximagefile))
+        else:  # material definition for water
+            tex_image_file = set_separator(self.xp_path + "/Resources/bitmaps/world/water/any.png", to='os',
+                                           double_backslash=True)
             m.use_nodes = True
             bsdf = m.node_tree.nodes["Principled BSDF"]
-            texImage = m.node_tree.nodes.new('ShaderNodeTexImage')
-            texImage.image = bpy.data.images.load(teximagefile, check_existing=True)
-            m.node_tree.links.new(bsdf.inputs['Base Color'], texImage.outputs['Color'])
-            ### TBD: Change specular, roughness, transmission to good values for water
+            tex_image = m.node_tree.nodes.new('ShaderNodeTexImage')
+            tex_image.image = bpy.data.images.load(tex_image_file, check_existing=True)
+            m.node_tree.links.new(bsdf.inputs['Base Color'], tex_image.outputs['Color'])
+            ### TBD: Change specular, roughness, transmission to good values for water ###
         return m
                 
     def execute(self, dsf_filename):
@@ -128,6 +134,8 @@ class DSF_loader:
         print("Reading DSF file: {}".format(self.dsf_file))
         if not len(self.xp_path):  # if path to X-Plane.exe is not defined, retrieve it from dsf file
             self.xp_path = self.dsf_file[:self.dsf_file.rfind("X-Plane 11") + 10]
+            ######## TBD: Error if folder not found ############
+            ######## TBD: Define X-Plane folder above as visible constant to be changed + Option to define path in import menu #############
         print("XP Path: {}".format(self.xp_path))
 
         dsf = XPLNEDSF()
