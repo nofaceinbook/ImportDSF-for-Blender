@@ -4,6 +4,10 @@ This is an addon for Blender allowing to import terrain mesh of X-Plane stored i
 
 *Warning:* This program is in an early stage and probly has some errors. But feedback from testers welcome.
 
+## UPDATE ##
+Seems the current addon-code has some issues with imports. The all_in_one_script file should work e.g. by directly copying to a script page and run it.
+However, this code retrieves terrain data from X-Plane for showing and might not run under XP12 (to be tested by someone owning XP12).
+
 ## Installation ##
 
 1. Download this repository as zip (through GitHub this can be done through the Clone or download > Download ZIP button).
