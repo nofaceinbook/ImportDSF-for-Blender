@@ -28,6 +28,7 @@ On the right in the import menu you have the option to only import parts of the 
 for smaller systems you should make use of this option in order crashing by out of memory.
 
 ## Further Development ##
+I'm not using X-Plane any more so I stoppe development. For those who like, next steps could be:
 * Clean and stabilize code
 * Add further options for import like using Mercartor projection
 * Description or menu functions for updating the mesh including all overlays
